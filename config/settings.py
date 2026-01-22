@@ -7,6 +7,10 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured("SECRET_KEY environment variable is required")
+
 DEBUG = os.getenv("DEBUG") == "True"
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS").split(",") if os.getenv("ALLOWED_HOSTS") else ["localhost","127.0.0.1"]
 INSTALLED_APPS = [
@@ -71,29 +75,31 @@ def is_valid_db_value(value):
     return True
 
 if db_host and db_name and db_user and is_valid_db_value(db_host) and is_valid_db_value(db_name) and is_valid_db_value(db_user):
+    db_config = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": db_name,
+        "USER": db_user,
+        "HOST": db_host,
+    }
+    if db_password:
+        db_config["PASSWORD"] = db_password
+    if db_port:
+        db_config["PORT"] = db_port
     DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": db_name,
-            "USER": db_user,
-            "PASSWORD": db_password,
-            "HOST": db_host,
-            "PORT": db_port,
-        }
+        "default": db_config
     }
 else:
-    db_engine = os.getenv("DATABASE_ENGINE")
-    if db_engine or db_name or db_user or db_host:
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.postgresql",
-                "NAME": db_name or os.getenv("DATABASE_NAME"),
-                "USER": db_user or os.getenv("DATABASE_USER"),
-                "PASSWORD": db_password or os.getenv("DATABASE_PASSWORD"),
-                "HOST": db_host or os.getenv("DATABASE_HOST"),
-                "PORT": db_port or os.getenv("DATABASE_PORT"),
-            }
-        }
+    from django.core.exceptions import ImproperlyConfigured
+    missing_vars = []
+    if not db_host:
+        missing_vars.append("DATABASE_HOST or DB_HOST")
+    if not db_name:
+        missing_vars.append("DATABASE_NAME, DB_NAME, or DB_DATABASE")
+    if not db_user:
+        missing_vars.append("DATABASE_USER or DB_USER")
+    raise ImproperlyConfigured(
+        f"Database configuration is incomplete. Missing required environment variables: {', '.join(missing_vars)}"
+    )
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -141,6 +147,12 @@ else:
         _default = f"redis://{_h}:{_p}/{_d}"
         CELERY_BROKER_URL = _default
         CELERY_RESULT_BACKEND = _default
+    else:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            "Celery configuration is incomplete. Set REDIS_URL, CELERY_BROKER_URL, or REDIS_HOST, REDIS_PORT, REDIS_DB"
+        )
+
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
