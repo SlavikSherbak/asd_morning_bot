@@ -1,5 +1,5 @@
 """
-Celery configuration for asd_morning_bot project.
+Celery configuration for sda_morning_bot project.
 """
 import os
 from celery import Celery
@@ -7,7 +7,7 @@ from celery import Celery
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
-app = Celery("asd_morning_bot")
+app = Celery("sda_morning_bot")
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.

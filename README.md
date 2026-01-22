@@ -1,4 +1,4 @@
-# ASD Morning Bot
+# SDA Morning Bot
 
 A Django-based Telegram bot that sends daily morning inspirations from books to users at scheduled times.
 
@@ -36,7 +36,7 @@ A Django-based Telegram bot that sends daily morning inspirations from books to 
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd asd_morning_bot
+cd sda_morning_bot
 ```
 
 2. Create `.env` file from `env.example`:
@@ -50,7 +50,7 @@ SECRET_KEY=your-secret-key
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 DATABASE_ENGINE=postgresql
-DATABASE_NAME=asd_morning_bot
+DATABASE_NAME=sda_morning_bot
 DATABASE_USER=postgres
 DATABASE_PASSWORD=postgres
 DATABASE_HOST=postgres
@@ -88,7 +88,7 @@ EGW_API_AUTH_TOKEN=your-api-token
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd asd_morning_bot
+cd sda_morning_bot
 ```
 
 2. Create virtual environment:
@@ -242,7 +242,7 @@ The admin interface uses **django-grappelli** for improved usability and modern 
 ## Project Structure
 
 ```
-asd_morning_bot/
+sda_morning_bot/
 ├── bot/                    # Telegram bot application
 │   ├── handlers/          # Message handlers
 │   │   ├── start.py      # Start command and language selection
@@ -439,6 +439,10 @@ For detailed deployment instructions including:
 - Troubleshooting
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+### Digital Ocean
+
+Покрокова інструкція з розгортання на Digital Ocean Droplet: [DEPLOYMENT_DIGITALOCEAN.md](./DEPLOYMENT_DIGITALOCEAN.md).
 
 ### Recommended Hosting Providers
 

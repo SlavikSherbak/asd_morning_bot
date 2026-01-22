@@ -1,5 +1,5 @@
 """
-WSGI config for asd_morning_bot project.
+WSGI config for sda_morning_bot project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
