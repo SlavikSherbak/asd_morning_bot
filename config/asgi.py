@@ -1,5 +1,5 @@
 """
-ASGI config for asd_morning_bot project.
+ASGI config for sda_morning_bot project.
 """
 
 import os

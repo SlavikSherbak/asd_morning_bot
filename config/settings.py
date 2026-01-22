@@ -1,25 +1,18 @@
-"""
-Django settings for asd_morning_bot project.
-"""
-
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-change-me-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured("SECRET_KEY environment variable is required")
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "True") == "True"
-
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-
-# Application definition
+DEBUG = os.getenv("DEBUG") == "True"
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS").split(",") if os.getenv("ALLOWED_HOSTS") else ["localhost","127.0.0.1"]
 INSTALLED_APPS = [
     "grappelli",
     "django.contrib.admin",
@@ -63,40 +56,51 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Database
-# Використовуємо PostgreSQL в Docker, SQLite для локальної розробки без Docker
-DATABASE_URL = os.getenv("DATABASE_URL", "")
-if DATABASE_URL:
-    # PostgreSQL з DATABASE_URL
-    import dj_database_url
+db_host = os.getenv("DB_HOST") or os.getenv("DATABASE_HOST")
+db_name = (
+    os.getenv("DB_DATABASE")
+    or os.getenv("DB_NAME")
+    or os.getenv("DATABASE_NAME")
+)
+db_user = os.getenv("DB_USER") or os.getenv("DATABASE_USER")
+db_password = os.getenv("DB_PASSWORD") or os.getenv("DATABASE_PASSWORD")
+db_port = os.getenv("DB_PORT") or os.getenv("DATABASE_PORT")
+
+def is_valid_db_value(value):
+    if not value:
+        return False
+    value_stripped = value.strip()
+    if not value_stripped or value_stripped == "://" or value_stripped.startswith("://"):
+        return False
+    return True
+
+if db_host and db_name and db_user and is_valid_db_value(db_host) and is_valid_db_value(db_name) and is_valid_db_value(db_user):
+    db_config = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": db_name,
+        "USER": db_user,
+        "HOST": db_host,
+    }
+    if db_password:
+        db_config["PASSWORD"] = db_password
+    if db_port:
+        db_config["PORT"] = db_port
     DATABASES = {
-        "default": dj_database_url.parse(DATABASE_URL)
+        "default": db_config
     }
 else:
-    # Перевіряємо чи є змінні для PostgreSQL (для Docker)
-    db_engine = os.getenv("DATABASE_ENGINE", "")
-    db_host = os.getenv("DATABASE_HOST", "")
-    if db_engine == "postgresql" or db_host:
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.postgresql",
-                "NAME": os.getenv("DATABASE_NAME", "asd_morning_bot"),
-                "USER": os.getenv("DATABASE_USER", "postgres"),
-                "PASSWORD": os.getenv("DATABASE_PASSWORD", "postgres"),
-                "HOST": db_host or "postgres",
-                "PORT": os.getenv("DATABASE_PORT", "5432"),
-            }
-        }
-    else:
-        # SQLite3 для локальної розробки
-        DATABASES = {
-            "default": {
-                "ENGINE": "django.db.backends.sqlite3",
-                "NAME": BASE_DIR / "db.sqlite3",
-            }
-        }
+    from django.core.exceptions import ImproperlyConfigured
+    missing_vars = []
+    if not db_host:
+        missing_vars.append("DATABASE_HOST or DB_HOST")
+    if not db_name:
+        missing_vars.append("DATABASE_NAME, DB_NAME, or DB_DATABASE")
+    if not db_user:
+        missing_vars.append("DATABASE_USER or DB_USER")
+    raise ImproperlyConfigured(
+        f"Database configuration is incomplete. Missing required environment variables: {', '.join(missing_vars)}"
+    )
 
-# Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -112,13 +116,11 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# Internationalization
 LANGUAGE_CODE = "uk"
 TIME_ZONE = "Europe/Kyiv"
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
@@ -126,40 +128,46 @@ STATICFILES_DIRS = [
     BASE_DIR / "static",
 ] if (BASE_DIR / "static").exists() else []
 
-# Grappelli settings
-GRAPPELLI_ADMIN_TITLE = "ASD Morning Bot Admin"
+GRAPPELLI_ADMIN_TITLE = "SDA Morning Bot Admin"
 
-# Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Celery Configuration
-# Використовуємо Redis з Docker compose (сервіс redis) або локальний Redis
-# Якщо CELERY_BROKER_URL не встановлено, використовуємо REDIS_HOST (для Docker це "redis")
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = os.getenv("REDIS_PORT", "6379")
-REDIS_DB = os.getenv("REDIS_DB", "0")
-# Формуємо URL на основі REDIS_HOST якщо CELERY_BROKER_URL не вказано явно
-_default_redis_url = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL") or _default_redis_url
-CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND") or _default_redis_url
+_redis_url = os.getenv("REDIS_URL")
+if _redis_url:
+    CELERY_BROKER_URL = _redis_url
+    CELERY_RESULT_BACKEND = _redis_url
+elif os.getenv("CELERY_BROKER_URL"):
+    CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
+    CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND") or CELERY_BROKER_URL
+else:
+    _h = os.getenv("REDIS_HOST")
+    _p = os.getenv("REDIS_PORT")
+    _d = os.getenv("REDIS_DB")
+    if _h and _p and _d:
+        _default = f"redis://{_h}:{_p}/{_d}"
+        CELERY_BROKER_URL = _default
+        CELERY_RESULT_BACKEND = _default
+    else:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            "Celery configuration is incomplete. Set REDIS_URL, CELERY_BROKER_URL, or REDIS_HOST, REDIS_PORT, REDIS_DB"
+        )
+
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
-# Celery Beat Schedule
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
     "send-inspirations-to-users": {
         "task": "bot.tasks.send_inspirations_to_users",
-        "schedule": crontab(minute="*/5"),  # Кожні 5 хвилин
+        "schedule": crontab(minute="*/5"),
     },
 }
 
-# Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# EGW Writings API Configuration
-EGW_API_AUTH_TOKEN = os.getenv("EGW_API_AUTH_TOKEN", "")
+EGW_API_AUTH_TOKEN = os.getenv("EGW_API_AUTH_TOKEN")
 
