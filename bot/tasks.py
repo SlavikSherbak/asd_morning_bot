@@ -81,6 +81,9 @@ def send_inspirations_to_users():
 def send_inspiration_to_user(telegram_id: int, inspiration_id: int, language: str):
     from bot.bot import bot
     from bot.utils import convert_html_to_telegram
+    import logging
+
+    logger = logging.getLogger(__name__)
     
     async def _send():
         try:
@@ -88,35 +91,101 @@ def send_inspiration_to_user(telegram_id: int, inspiration_id: int, language: st
                 inspiration = DailyInspiration.objects.select_related('book').get(id=insp_id)
                 book = inspiration.book
                 
-                use_html = bool(inspiration.html_content and book.language == lang)
+                # Try to use HTML content if it exists, regardless of language
+                # because it usually contains the most complete formatting.
+                # If languages don't match, we still try to use it as a fallback.
+                use_html = bool(inspiration.html_content)
                 
+                content = None
                 if use_html:
                     content = convert_html_to_telegram(inspiration.html_content)
-                    if not content or not content.strip():
-                        content = inspiration.get_text_by_language(lang)
-                else:
+                    
+                # If no HTML content or conversion resulted in empty string, fallback to text
+                if not content or not content.strip():
                     content = inspiration.get_text_by_language(lang)
+                
+                # Final fallback to original text if language-specific text is empty
+                if not content or not content.strip():
+                    content = inspiration.original_text
                 
                 return content, book.title
             
             content, book_title = await sync_to_async(get_inspiration_data)(inspiration_id, language)
             
+            if not content or not content.strip():
+                logger.error(f"Inspiration {inspiration_id} has no content for language {language}")
+                return
+
             from bot.templates.translations import get_text
             message = get_text(language, "inspiration_message", book_title=book_title, content=content)
-            await bot.send_message(chat_id=telegram_id, text=message)
             
-            if not settings.DEBUG:
-                try:
-                    telegram_user = TelegramUser.objects.get(telegram_id=telegram_id)
-                    inspiration = DailyInspiration.objects.get(id=inspiration_id)
-                    SentInspiration.objects.get_or_create(
-                        telegram_user=telegram_user,
-                        inspiration=inspiration,
-                        language=language,
+            # Track if message was successfully sent
+            message_sent = False
+            
+            try:
+                await bot.send_message(chat_id=telegram_id, text=message)
+                message_sent = True
+            except Exception as e:
+                logger.error(f"Failed to send message to {telegram_id}: {e}")
+                # Try to send without HTML if it was a parse error
+                if "can't parse entities" in str(e).lower() or "parse" in str(e).lower():
+                    import re
+                    clean_message = re.sub('<[^<]+?>', '', message)
+                    try:
+                        await bot.send_message(chat_id=telegram_id, text=clean_message)
+                        message_sent = True
+                        logger.info(f"Successfully sent cleaned message to {telegram_id} after parse error")
+                    except Exception as e2:
+                        logger.error(f"Failed to send cleaned message to {telegram_id}: {e2}")
+                        # Message was not sent, don't save SentInspiration
+                        return
+            
+            # Only save SentInspiration if message was successfully sent
+            if message_sent:
+                if not settings.DEBUG:
+                    try:
+                        telegram_user = TelegramUser.objects.get(telegram_id=telegram_id)
+                        inspiration = DailyInspiration.objects.get(id=inspiration_id)
+                        
+                        # Use proper async wrapper for get_or_create
+                        def _save_sent_inspiration():
+                            return SentInspiration.objects.get_or_create(
+                                telegram_user=telegram_user,
+                                inspiration=inspiration,
+                                language=language,
+                            )
+                        
+                        sent_inspiration, created = await sync_to_async(_save_sent_inspiration)()
+                        if created:
+                            logger.info(
+                                f"Saved SentInspiration record for user {telegram_id}, "
+                                f"inspiration {inspiration_id}, language {language}"
+                            )
+                        else:
+                            logger.warning(
+                                f"SentInspiration already exists for user {telegram_id}, "
+                                f"inspiration {inspiration_id}, language {language}"
+                            )
+                    except TelegramUser.DoesNotExist:
+                        logger.error(f"TelegramUser {telegram_id} not found when saving SentInspiration")
+                    except DailyInspiration.DoesNotExist:
+                        logger.error(f"DailyInspiration {inspiration_id} not found when saving SentInspiration")
+                    except Exception as e:
+                        logger.error(
+                            f"Error saving SentInspiration for user {telegram_id}, "
+                            f"inspiration {inspiration_id}, language {language}: {e}",
+                            exc_info=True
+                        )
+                else:
+                    logger.debug(
+                        f"DEBUG mode: Skipping SentInspiration save for user {telegram_id}, "
+                        f"inspiration {inspiration_id}, language {language}"
                     )
-                except (TelegramUser.DoesNotExist, DailyInspiration.DoesNotExist):
-                    pass
-        except Exception:
-            pass
+            else:
+                logger.warning(
+                    f"Message was not sent to {telegram_id}, not saving SentInspiration record"
+                )
+        except Exception as e:
+            logger.exception(f"Error in send_inspiration_to_user for user {telegram_id}: {e}")
     
     asyncio.run(_send())
