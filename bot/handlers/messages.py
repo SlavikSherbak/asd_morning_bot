@@ -16,19 +16,19 @@ async def random_day_handler(message: Message):
     try:
         telegram_user = await sync_to_async(TelegramUser.objects.get)(telegram_id=message.from_user.id)
         
-        def get_user_settings(tg_user):
+        def get_user_settings_and_inspirations(tg_user):
+            from core.models import Book
             try:
-                settings = UserSettings.objects.select_related('selected_book').get(telegram_user=tg_user)
-                selected_book = settings.selected_book
+                settings = UserSettings.objects.get(telegram_user=tg_user)
                 user_language = settings.language
-                
-                if not selected_book:
-                    return None, None, None, "no_book"
                 
                 inspirations = list(
                     DailyInspiration.objects
                     .select_related('book')
-                    .filter(book=selected_book)
+                    .filter(
+                        book__language=user_language,
+                        book__is_active=True
+                    )
                     .only(
                         'html_content',
                         'translation_ukrainian',
@@ -42,13 +42,13 @@ async def random_day_handler(message: Message):
                 )
                 
                 if not inspirations:
-                    return None, None, selected_book.title, "no_inspirations"
+                    return None, None, "no_inspirations"
                 
-                return settings, selected_book, inspirations, None
+                return settings, inspirations, None
             except UserSettings.DoesNotExist:
-                return None, None, None, "no_settings"
+                return None, None, "no_settings"
         
-        settings, selected_book, inspirations, error = await sync_to_async(get_user_settings)(telegram_user)
+        settings, inspirations, error = await sync_to_async(get_user_settings_and_inspirations)(telegram_user)
         language = await get_user_language(message.from_user.id)
         
         if error == "no_settings":
@@ -58,26 +58,18 @@ async def random_day_handler(message: Message):
             )
             return
         
-        if error == "no_book":
-            await message.answer(
-                get_text(language, "error_no_book"),
-                reply_markup=get_main_keyboard(language)
-            )
-            return
-        
         if error == "no_inspirations":
-            book_title = selected_book
             await message.answer(
-                get_text(language, "error_no_inspirations", book_title=book_title),
+                get_text(language, "error_no_inspirations"),
                 reply_markup=get_main_keyboard(language)
             )
             return
         
-        def get_random_inspiration_data(inspirations_list, settings_obj, book_obj):
+        def get_random_inspiration_data(inspirations_list, settings_obj):
             random_inspiration = random.choice(inspirations_list)
             
             user_lang = settings_obj.language
-            book_lang = book_obj.language
+            book_lang = random_inspiration.book.language
             
             html_content = random_inspiration.html_content
             translation_ukrainian = random_inspiration.translation_ukrainian
@@ -107,8 +99,7 @@ async def random_day_handler(message: Message):
         
         inspiration_data = await sync_to_async(get_random_inspiration_data)(
             inspirations,
-            settings,
-            selected_book
+            settings
         )
         
         html_content = inspiration_data['html_content']

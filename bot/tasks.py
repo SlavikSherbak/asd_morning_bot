@@ -119,15 +119,12 @@ def send_inspiration_to_user(telegram_id: int, inspiration_id: int, language: st
             from bot.templates.translations import get_text
             message = get_text(language, "inspiration_message", book_title=book_title, content=content)
             
-            # Track if message was successfully sent
             message_sent = False
             
             try:
                 await bot.send_message(chat_id=telegram_id, text=message)
                 message_sent = True
             except Exception as e:
-                logger.error(f"Failed to send message to {telegram_id}: {e}")
-                # Try to send without HTML if it was a parse error
                 if "can't parse entities" in str(e).lower() or "parse" in str(e).lower():
                     import re
                     clean_message = re.sub('<[^<]+?>', '', message)
@@ -137,17 +134,14 @@ def send_inspiration_to_user(telegram_id: int, inspiration_id: int, language: st
                         logger.info(f"Successfully sent cleaned message to {telegram_id} after parse error")
                     except Exception as e2:
                         logger.error(f"Failed to send cleaned message to {telegram_id}: {e2}")
-                        # Message was not sent, don't save SentInspiration
                         return
             
-            # Only save SentInspiration if message was successfully sent
             if message_sent:
                 if not settings.DEBUG:
                     try:
                         telegram_user = TelegramUser.objects.get(telegram_id=telegram_id)
                         inspiration = DailyInspiration.objects.get(id=inspiration_id)
                         
-                        # Use proper async wrapper for get_or_create
                         def _save_sent_inspiration():
                             return SentInspiration.objects.get_or_create(
                                 telegram_user=telegram_user,
