@@ -145,12 +145,12 @@ def send_inspirations_to_users():
         
         logger.info(f"   📅 Поточна дата користувача: {user_current_date}")
         logger.info(f"   🕐 Поточний час користувача: {user_current_time.strftime('%H:%M:%S')}")
+
+        window_end_datetime = user_now
+        window_start_datetime = window_end_datetime - timedelta(minutes=5)
         
-        # Обчислюємо вікно часу (5-хвилинні інтервали)
-        current_minute = user_current_time.minute
-        window_start_minute = (current_minute // 5) * 5
-        window_start_time = user_current_time.replace(minute=window_start_minute, second=0, microsecond=0)
-        window_end_time = user_current_time.replace(second=0, microsecond=0)
+        window_start_time = window_start_datetime.time()
+        window_end_time = window_end_datetime.time()
         
         notification_time = settings_obj.notification_time
         logger.info(f"   ⏰ Час нотифікації: {notification_time.strftime('%H:%M:%S')}")
@@ -161,9 +161,17 @@ def send_inspirations_to_users():
             time_in_window = notification_time <= user_current_time
             logger.info(f"   🔧 DEBUG режим: перевіряємо {notification_time} <= {user_current_time}: {time_in_window}")
         else:
-            time_in_window = (
-                window_start_time <= notification_time <= window_end_time
+            notification_datetime = window_end_datetime.replace(
+                hour=notification_time.hour,
+                minute=notification_time.minute,
+                second=0,
+                microsecond=0
             )
+
+            if notification_datetime > window_end_datetime:
+                notification_datetime = notification_datetime - timedelta(days=1)
+
+            time_in_window = window_start_datetime <= notification_datetime <= window_end_datetime
             logger.info(f"   ✅ Час у вікні: {time_in_window}")
         
         if not time_in_window:
@@ -412,5 +420,16 @@ def send_inspiration_to_user(telegram_id: int, inspiration_id: int, language: st
                 f"❌ КРИТИЧНА ПОМИЛКА в send_inspiration_to_user для користувача {telegram_id}: {e}"
             )
             logger.error("=" * 60)
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("Event loop is closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     
-    asyncio.run(_send())
+    try:
+        loop.run_until_complete(_send())
+    finally:
+        pass
