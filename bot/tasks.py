@@ -371,17 +371,20 @@ def send_inspiration_to_user(telegram_id: int, inspiration_id: int, language: st
                 
                 if not settings.DEBUG:
                     try:
-                        telegram_user = TelegramUser.objects.get(telegram_id=telegram_id)
-                        inspiration = DailyInspiration.objects.get(id=inspiration_id)
-                        
+                        # ВСІ Django ORM запити мають бути всередині sync функції
                         def _save_sent_inspiration():
-                            return SentInspiration.objects.get_or_create(
+                            telegram_user = TelegramUser.objects.get(telegram_id=telegram_id)
+                            inspiration = DailyInspiration.objects.get(id=inspiration_id)
+                            
+                            sent_inspiration, created = SentInspiration.objects.get_or_create(
                                 telegram_user=telegram_user,
                                 inspiration=inspiration,
                                 language=language,
                             )
+                            return sent_inspiration, created
                         
                         sent_inspiration, created = await sync_to_async(_save_sent_inspiration)()
+                        
                         if created:
                             logger.info(
                                 f"   ✅ Запис SentInspiration створено: "
@@ -392,15 +395,18 @@ def send_inspiration_to_user(telegram_id: int, inspiration_id: int, language: st
                                 f"   ⚠️ Запис SentInspiration вже існував: "
                                 f"user={telegram_id}, inspiration={inspiration_id}, language={language}"
                             )
-                    except TelegramUser.DoesNotExist:
-                        logger.error(f"   ❌ TelegramUser {telegram_id} не знайдено при збереженні SentInspiration!")
-                    except DailyInspiration.DoesNotExist:
-                        logger.error(f"   ❌ DailyInspiration {inspiration_id} не знайдено при збереженні SentInspiration!")
                     except Exception as e:
-                        logger.error(
-                            f"   ❌ Помилка при збереженні SentInspiration: {e}",
-                            exc_info=True
-                        )
+                        # Перевіряємо тип помилки через рядкове представлення
+                        error_str = str(e)
+                        if "TelegramUser" in error_str and "DoesNotExist" in error_str:
+                            logger.error(f"   ❌ TelegramUser {telegram_id} не знайдено при збереженні SentInspiration!")
+                        elif "DailyInspiration" in error_str and "DoesNotExist" in error_str:
+                            logger.error(f"   ❌ DailyInspiration {inspiration_id} не знайдено при збереженні SentInspiration!")
+                        else:
+                            logger.error(
+                                f"   ❌ Помилка при збереженні SentInspiration: {e}",
+                                exc_info=True
+                            )
                 else:
                     logger.info(
                         f"   🔧 DEBUG режим: пропускаємо збереження SentInspiration"
