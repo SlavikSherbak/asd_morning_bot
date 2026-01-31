@@ -61,6 +61,8 @@ services:
       - ./staticfiles:/app/staticfiles
       - ./media:/app/media
     working_dir: /app
+    ports:
+      - "${APP_BIND:-127.0.0.1:8000}:8000"
     command: >
       sh -c "
         echo 'Waiting for database to be ready...' &&
