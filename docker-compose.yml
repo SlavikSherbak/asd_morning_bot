@@ -58,13 +58,9 @@ services:
     volumes:
       - .:/app
       - ./docker/config:/config
-      - staticfiles:/app/staticfiles
-      - media:/app/media
+      - ./staticfiles:/app/staticfiles
+      - ./media:/app/media
     working_dir: /app
-    ports:
-      - "${APP_BIND:-127.0.0.1:8000}:8000"
-    expose:
-      - 8000
     command: >
       sh -c "
         echo 'Waiting for database to be ready...' &&
@@ -172,10 +168,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
-    driver: local
-  staticfiles:
-    driver: local
-  media:
     driver: local
   celery_beat_schedule:
     driver: local
