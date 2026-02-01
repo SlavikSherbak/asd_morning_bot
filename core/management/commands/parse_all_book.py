@@ -49,14 +49,12 @@ class Command(BaseCommand):
                     )
                 )
                 return
-
+            start_url = book.source_url
             if not start_url:
-                start_url = book.source_url
-                if not start_url:
-                    raise CommandError(
-                        "Start URL not specified and book has no source_url. "
-                        "Specify --start-url or add source_url to book."
-                    )
+                raise CommandError(
+                    "Start URL not specified and book has no source_url. "
+                    "Specify --start-url or add source_url to book."
+                )
 
             self.stdout.write(f"Starting to parse book: {book.title}")
             self.stdout.write(f"Start URL: {start_url}")
